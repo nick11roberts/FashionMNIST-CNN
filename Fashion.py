@@ -1,10 +1,13 @@
 from torch.utils.data import Dataset, DataLoader
+from sklearn.preprocessing import OneHotEncoder
+from sklearn.metrics import mutual_info_score
 from torchvision import transforms, utils
 from torch.autograd import Variable
 import matplotlib.pyplot as plt
 import torch.optim as optim
 import torch.nn as nn
 import urllib.request
+import scipy.stats
 import numpy as np
 import random
 import struct
@@ -69,7 +72,7 @@ class Fashion(Dataset):
 
 	'''
 	__getitem__(index) -> Will return the image and label at the specified index
-	
+
 	If transform parametr of class is set as True the function would or would not
 	perform a random horizontal flip of the image.
 	'''
@@ -88,7 +91,7 @@ class Fashion(Dataset):
 		image = self.tensor_transform(image)
 		image = image.contiguous()
 		image = image.view(1,28,28)
-			
+
 		return image,label
 
 
@@ -128,7 +131,7 @@ class Fashion(Dataset):
 			f = gzip.open(self.file_name[file_index]+'.gz', 'rb')
 			with open(raw_path+"/"+self.file_name[file_index],'wb') as w:
 				for line in f.readlines():
-					w.write(line)	
+					w.write(line)
 			f.close()
 			os.remove(self.file_name[file_index]+".gz")
 
@@ -192,7 +195,7 @@ class Fashion(Dataset):
 			label = np.asarray(label)
 			return (torch.from_numpy(label))
 
-		
+
 train_dataset = Fashion(root = "./FashionMNIST", train = True, transform = True, download = True)
 test_dataset = Fashion(root = "./FashionMNIST", train = False, transform = True, download = True)
 
@@ -203,8 +206,10 @@ and total iterations(n_ters)
 '''
 
 batch_size = 100
-n_iters = 18000
+n_iters = 360 #18000
+m_bins = 30
 epoch_size = n_iters/(len(train_dataset)/batch_size)
+epoch_size = int(math.ceil(epoch_size))
 
 '''
 Loading the test dataset (test_loader)
@@ -218,9 +223,9 @@ image_dict = {0:'T-shirt/Top', 1:'Trouser', 2:'Pullover', 3:'Dress',
 for index, (images,labels) in enumerate(test_loader):
 	image=images[index][0]
 	label = labels[index]
-	plt.imshow(image)
-	plt.suptitle(image_dict[label.item()]+" - "+str(label.item()))
-	plt.show()
+	#plt.imshow(image)
+	#plt.suptitle(image_dict[label.item()]+" - "+str(label.item()))
+	#plt.show()
 	if index == 5:
 		break
 
@@ -228,14 +233,14 @@ for index, (images,labels) in enumerate(test_loader):
 Model Details:
 
 Two Convolutional Layers:
-      - Using ReLU activation
+      - Using tanh activation
       - Batch Normalisation
       - Uniform Xavier Weigths
       - Max Pooling
-      
+
 One Fully Connected Layer:
-      - Using ReLU activation
-      
+      - Using tanh activation
+
 One Fully Connected Layer:
       - Output Layer
 
@@ -246,44 +251,80 @@ class CNNModel(nn.Module):
 		super (CNNModel, self).__init__()
 
 		self.cnn1 = nn.Conv2d(in_channels = 1, out_channels = 32, kernel_size = 5, stride = 1, padding = 2)
-		self.relu1 = nn.ReLU()
+		self.tanh1 = nn.Tanh()
+
 		self.norm1 = nn.BatchNorm2d(32)
-		nn.init.xavier_uniform(self.cnn1.weight)
-
+		nn.init.xavier_uniform_(self.cnn1.weight)
 		self.maxpool1 = nn.MaxPool2d(kernel_size=2)
-
 		self.cnn2 = nn.Conv2d(in_channels = 32, out_channels = 64, kernel_size = 3, stride = 1, padding = 2)
-		self.relu2 = nn.ReLU()
+		self.tanh2 = nn.Tanh()
+
 		self.norm2 = nn.BatchNorm2d(64)
-		nn.init.xavier_uniform(self.cnn2.weight)
-
+		nn.init.xavier_uniform_(self.cnn2.weight)
 		self.maxpool2 = nn.MaxPool2d(kernel_size=2)
-
 		self.fc1 = nn.Linear(4096, 4096)
-		self.fcrelu = nn.ReLU()
+		self.fctanh = nn.Tanh()
 
 		self.fc2 = nn.Linear(4096, 10)
 
+		self.sofmax = nn.Softmax(1)
+
 	def forward(self, x):
 		out = self.cnn1(x)
-		out = self.relu1(out)
+		out = self.tanh1(out)
+
 		out = self.norm1(out)
-
 		out = self.maxpool1(out)
-
 		out = self.cnn2(out)
-		out = self.relu2(out)
+		out = self.tanh2(out)
+
 		out = self.norm2(out)
-
 		out = self.maxpool2(out)
-
 		out = out.view(out.size(0),-1)
-
 		out = self.fc1(out)
-		out = self.fcrelu(out)
+		out = self.fctanh(out)
 
 		out = self.fc2(out)
 		return out
+
+	def forward_activ(self, x):
+
+		out = self.cnn1(x)
+		out = self.tanh1(out)
+		out = self.norm1(out)
+		out = self.maxpool1(out)
+		t1 = out.clone()
+		t1 = t1.cpu().detach().numpy()
+		t1 = t1.reshape(t1.shape[0], t1.shape[1] * t1.shape[2] * t1.shape[3])
+
+		out = self.cnn2(out)
+		out = self.tanh2(out)
+		out = self.norm2(out)
+		out = self.maxpool2(out)
+		t2 = out.clone()
+		t2 = t2.cpu().detach().numpy()
+		t2 = t2.reshape(t2.shape[0], t2.shape[1] * t2.shape[2] * t2.shape[3])
+
+		out = out.view(out.size(0),-1)
+		out = self.fc1(out)
+		out = self.fctanh(out)
+		t3 = out.clone()
+		t3 = t3.cpu().detach().numpy()
+
+		out = self.fc2(out)
+		t4 = out.clone()
+		t4 = self.sofmax(t4)
+		t4 = t4.cpu().detach().numpy()
+
+		return out, t1, t2, t3, t4
+
+def mutual_info(A, B):
+	N = len(A)
+	AB = np.sum(np.amin(np.array([A, B]), axis=0)) / N
+	A = np.sum(A) / N
+	B = np.sum(B) / N
+
+	return AB * np.log((AB)/(A * B))
 
 
 '''
@@ -306,40 +347,90 @@ criterion = nn.CrossEntropyLoss()
 
 learning_rate = 0.015
 moment = 0.9
-optimizer = optim.SGD(model.parameters(),lr = learning_rate, momentum = moment, nesterov = True)
+#optimizer = optim.SGD(model.parameters(),lr = learning_rate, momentum = moment, nesterov = True)
+optimizer = optim.Adam(model.parameters())
 
+iXT1 = []
+iXT2 = []
+iXT3 = []
+iXT4 = []
+
+iTY1 = []
+iTY2 = []
+iTY3 = []
+iTY4 = []
 
 iter = 0
-for epoch in range(int(math.ceil(epoch_size))):
+for epoch in range(epoch_size):
 
 	'''
 	Loading the training dataset after every epoch which will
 	load it from the Fashion Dataset Class making a new train
 	loader for every new epoch causing random flips and random
-	shuffling of above exampled Fashion MNIST images. 
+	shuffling of above exampled Fashion MNIST images.
 	'''
+
+	# Empirical layer activation histograms
+	t1_hist = np.zeros(m_bins)
+	t2_hist = np.zeros(m_bins)
+	t3_hist = np.zeros(m_bins)
+	t4_hist = np.zeros(m_bins)
+
+	# Empirical contigency matrix
+	cont_mat_yt1 = np.zeros([10, m_bins])
+	cont_mat_yt2 = np.zeros([10, m_bins])
+	cont_mat_yt3 = np.zeros([10, m_bins])
+	cont_mat_yt4 = np.zeros([10, m_bins])
 
 	train_loader = torch.utils.data.DataLoader(dataset = train_dataset, batch_size = batch_size, shuffle = True)
 	for i, (images, labels) in enumerate(train_loader):
+
 		if torch.cuda.is_available():
 			images = Variable(images.cuda())
 			labels = Variable(labels.cuda())
 		else:
 			images = Variable(images)
 			labels = Variable(labels)
+
+		Y = labels.clone()
+		Y = Y.cpu().detach().numpy()
+
 		optimizer.zero_grad()
-		outputs = model(images)
+		outputs, t1, t2, t3, t4 = model.forward_activ(images)
+
+		for batch_index in range(len(Y)):
+
+			# Compute the binned activations from each layer
+			# and keep a running total for each of the layers for this epoch
+			t1_hist_cur = np.histogram(t1[batch_index], m_bins, [-1.0, 1.0])[0]
+			t2_hist_cur = np.histogram(t2[batch_index], m_bins, [-1.0, 1.0])[0]
+			t3_hist_cur = np.histogram(t3[batch_index], m_bins, [-1.0, 1.0])[0]
+			t4_hist_cur = np.histogram(t4[batch_index], m_bins, [0.0, 1.0])[0]
+
+			t1_hist += t1_hist_cur
+			t2_hist += t2_hist_cur
+			t3_hist += t3_hist_cur
+			t4_hist += t4_hist_cur
+
+			# Update the layer activation histogram counts
+			# per label in the minibatch
+			cont_mat_yt1[Y[batch_index]] += t1_hist_cur
+			cont_mat_yt2[Y[batch_index]] += t2_hist_cur
+			cont_mat_yt3[Y[batch_index]] += t3_hist_cur
+			cont_mat_yt4[Y[batch_index]] += t4_hist_cur
+
 		loss = criterion(outputs,labels)
 		loss.backward()
 		optimizer.step()
 		iter += 1
+
 
 		'''
 		At every 3000th epoch a test on the above initialised test dataset
 		(test_loader) would be performed and an accuracy would be provided.
 		'''
 
-		if iter%3000 == 0:
+		if iter%30 == 0: #iter%3000 == 0:
 			correct = 0
 			total = 0
 			for image,label in test_loader:
@@ -355,5 +446,36 @@ for epoch in range(int(math.ceil(epoch_size))):
 				else:
 					correct += (predicted == label).sum()
 
-			accuracy = 100 * (correct/total)
-			print('Iteration: {} Loss: {} Accuracy: {}'.format(iter, round(loss.data[0],5), round(accuracy,2)))
+			accuracy = 100.0 * (correct.data.cpu().numpy()/total)
+			print('Iteration: {} Loss: {} Accuracy: {}'.format(iter, loss.item(), accuracy))
+
+			# Mutual information between X and T can be computed
+			# as the entropy in T because T is the output of a
+			# deterministic function of X, and is thus 0
+			# I(X;T) = I(T;X)
+			#        = H(T) - H(T|X)
+			#        = H(T)
+			iXT1.append(scipy.stats.entropy(t1_hist))
+			iXT2.append(scipy.stats.entropy(t2_hist))
+			iXT3.append(scipy.stats.entropy(t3_hist))
+			iXT4.append(scipy.stats.entropy(t4_hist))
+
+			#iTY1.append(mutual_info_score(t1_hist, y_bins))
+			#iTY2.append(mutual_info_score(t2_hist, y_bins))
+			#iTY3.append(mutual_info_score(t3_hist, y_bins))
+			#iTY4.append(mutual_info_score(t4_hist, y_bins))
+
+			t1_hist = np.zeros(m_bins)
+			t2_hist = np.zeros(m_bins)
+			t3_hist = np.zeros(m_bins)
+			t4_hist = np.zeros(m_bins)
+
+np.array(iXT1).tofile('iXT1.dat')
+np.array(iXT2).tofile('iXT2.dat')
+np.array(iXT3).tofile('iXT3.dat')
+np.array(iXT4).tofile('iXT4.dat')
+
+np.array(iTY1).tofile('iTY1.dat')
+np.array(iTY2).tofile('iTY2.dat')
+np.array(iTY3).tofile('iTY3.dat')
+np.array(iTY4).tofile('iTY4.dat')
