@@ -206,7 +206,7 @@ and total iterations(n_ters)
 '''
 
 batch_size = 100
-n_iters = 360 #18000
+n_iters = 18000 // 18
 m_bins = 30
 epoch_size = n_iters/(len(train_dataset)/batch_size)
 epoch_size = int(math.ceil(epoch_size))
@@ -291,19 +291,23 @@ class CNNModel(nn.Module):
 
 		out = self.cnn1(x)
 		out = self.tanh1(out)
-		out = self.norm1(out)
-		out = self.maxpool1(out)
+
 		t1 = out.clone()
 		t1 = t1.cpu().detach().numpy()
 		t1 = t1.reshape(t1.shape[0], t1.shape[1] * t1.shape[2] * t1.shape[3])
 
+		out = self.norm1(out)
+		out = self.maxpool1(out)
+
 		out = self.cnn2(out)
 		out = self.tanh2(out)
-		out = self.norm2(out)
-		out = self.maxpool2(out)
+
 		t2 = out.clone()
 		t2 = t2.cpu().detach().numpy()
 		t2 = t2.reshape(t2.shape[0], t2.shape[1] * t2.shape[2] * t2.shape[3])
+
+		out = self.norm2(out)
+		out = self.maxpool2(out)
 
 		out = out.view(out.size(0),-1)
 		out = self.fc1(out)
@@ -318,13 +322,21 @@ class CNNModel(nn.Module):
 
 		return out, t1, t2, t3, t4
 
-def mutual_info(A, B):
-	N = len(A)
-	AB = np.sum(np.amin(np.array([A, B]), axis=0)) / N
-	A = np.sum(A) / N
-	B = np.sum(B) / N
+def mutual_info(P):
 
-	return AB * np.log((AB)/(A * B))
+	# Normalize the counts
+	P /= np.sum(P)
+
+	# Compute marginal probabilities for t and y
+	Pt = np.sum(P, 0)
+	Py = np.sum(P, 1)
+
+	I = 0
+	for ti in range(P.shape[0]):
+		for yi in range(P.shape[1]):
+			I += P[ti, yi] * (np.log(P[ti, yi]) - np.log(Pt[yi] * Py[ti]))
+
+	return I
 
 
 '''
@@ -460,15 +472,20 @@ for epoch in range(epoch_size):
 			iXT3.append(scipy.stats.entropy(t3_hist))
 			iXT4.append(scipy.stats.entropy(t4_hist))
 
-			#iTY1.append(mutual_info_score(t1_hist, y_bins))
-			#iTY2.append(mutual_info_score(t2_hist, y_bins))
-			#iTY3.append(mutual_info_score(t3_hist, y_bins))
-			#iTY4.append(mutual_info_score(t4_hist, y_bins))
+			iTY1.append(mutual_info(cont_mat_yt1))
+			iTY2.append(mutual_info(cont_mat_yt2))
+			iTY3.append(mutual_info(cont_mat_yt3))
+			iTY4.append(mutual_info(cont_mat_yt4))
 
 			t1_hist = np.zeros(m_bins)
 			t2_hist = np.zeros(m_bins)
 			t3_hist = np.zeros(m_bins)
 			t4_hist = np.zeros(m_bins)
+
+			cont_mat_yt1 = np.zeros([10, m_bins])
+			cont_mat_yt2 = np.zeros([10, m_bins])
+			cont_mat_yt3 = np.zeros([10, m_bins])
+			cont_mat_yt4 = np.zeros([10, m_bins])
 
 np.array(iXT1).tofile('iXT1.dat')
 np.array(iXT2).tofile('iXT2.dat')
