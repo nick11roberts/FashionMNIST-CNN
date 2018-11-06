@@ -2,6 +2,7 @@ from torch.utils.data import Dataset, DataLoader
 from sklearn.preprocessing import OneHotEncoder
 from sklearn.metrics import mutual_info_score
 from torchvision import transforms, utils
+from scipy.stats import chi2_contingency
 from torch.autograd import Variable
 import matplotlib.pyplot as plt
 import torch.optim as optim
@@ -206,7 +207,7 @@ and total iterations(n_ters)
 '''
 
 batch_size = 100
-n_iters = 18000 // 18
+n_iters = 18000
 m_bins = 30
 epoch_size = n_iters/(len(train_dataset)/batch_size)
 epoch_size = int(math.ceil(epoch_size))
@@ -233,13 +234,13 @@ for index, (images,labels) in enumerate(test_loader):
 Model Details:
 
 Two Convolutional Layers:
-      - Using tanh activation
+      - Using relu activation
       - Batch Normalisation
       - Uniform Xavier Weigths
       - Max Pooling
 
 One Fully Connected Layer:
-      - Using tanh activation
+      - Using relu activation
 
 One Fully Connected Layer:
       - Output Layer
@@ -251,19 +252,19 @@ class CNNModel(nn.Module):
 		super (CNNModel, self).__init__()
 
 		self.cnn1 = nn.Conv2d(in_channels = 1, out_channels = 32, kernel_size = 5, stride = 1, padding = 2)
-		self.tanh1 = nn.Tanh()
+		self.relu1 = nn.ReLU()
 
 		self.norm1 = nn.BatchNorm2d(32)
 		nn.init.xavier_uniform_(self.cnn1.weight)
 		self.maxpool1 = nn.MaxPool2d(kernel_size=2)
 		self.cnn2 = nn.Conv2d(in_channels = 32, out_channels = 64, kernel_size = 3, stride = 1, padding = 2)
-		self.tanh2 = nn.Tanh()
+		self.relu2 = nn.ReLU()
 
 		self.norm2 = nn.BatchNorm2d(64)
 		nn.init.xavier_uniform_(self.cnn2.weight)
 		self.maxpool2 = nn.MaxPool2d(kernel_size=2)
 		self.fc1 = nn.Linear(4096, 4096)
-		self.fctanh = nn.Tanh()
+		self.fcrelu = nn.ReLU()
 
 		self.fc2 = nn.Linear(4096, 10)
 
@@ -271,18 +272,18 @@ class CNNModel(nn.Module):
 
 	def forward(self, x):
 		out = self.cnn1(x)
-		out = self.tanh1(out)
+		out = self.relu1(out)
 
 		out = self.norm1(out)
 		out = self.maxpool1(out)
 		out = self.cnn2(out)
-		out = self.tanh2(out)
+		out = self.relu2(out)
 
 		out = self.norm2(out)
 		out = self.maxpool2(out)
 		out = out.view(out.size(0),-1)
 		out = self.fc1(out)
-		out = self.fctanh(out)
+		out = self.fcrelu(out)
 
 		out = self.fc2(out)
 		return out
@@ -290,28 +291,24 @@ class CNNModel(nn.Module):
 	def forward_activ(self, x):
 
 		out = self.cnn1(x)
-		out = self.tanh1(out)
-
+		out = self.relu1(out)
+		out = self.norm1(out)
+		out = self.maxpool1(out)
 		t1 = out.clone()
 		t1 = t1.cpu().detach().numpy()
 		t1 = t1.reshape(t1.shape[0], t1.shape[1] * t1.shape[2] * t1.shape[3])
 
-		out = self.norm1(out)
-		out = self.maxpool1(out)
-
 		out = self.cnn2(out)
-		out = self.tanh2(out)
-
+		out = self.relu2(out)
+		out = self.norm2(out)
+		out = self.maxpool2(out)
 		t2 = out.clone()
 		t2 = t2.cpu().detach().numpy()
 		t2 = t2.reshape(t2.shape[0], t2.shape[1] * t2.shape[2] * t2.shape[3])
 
-		out = self.norm2(out)
-		out = self.maxpool2(out)
-
 		out = out.view(out.size(0),-1)
 		out = self.fc1(out)
-		out = self.fctanh(out)
+		out = self.fcrelu(out)
 		t3 = out.clone()
 		t3 = t3.cpu().detach().numpy()
 
@@ -334,7 +331,8 @@ def mutual_info(P):
 	I = 0
 	for ti in range(P.shape[0]):
 		for yi in range(P.shape[1]):
-			I += P[ti, yi] * (np.log(P[ti, yi]) - np.log(Pt[yi] * Py[ti]))
+			if (P[ti, yi] != 0) and (Pt[yi] != 0) and (Py[ti] != 0):
+				I += P[ti, yi] * (np.log(P[ti, yi]) - np.log(Pt[yi] * Py[ti]))
 
 	return I
 
@@ -388,7 +386,7 @@ for epoch in range(epoch_size):
 	t3_hist = np.zeros(m_bins)
 	t4_hist = np.zeros(m_bins)
 
-	# Empirical contigency matrix
+	# Empirical activations vs labels histograms
 	cont_mat_yt1 = np.zeros([10, m_bins])
 	cont_mat_yt2 = np.zeros([10, m_bins])
 	cont_mat_yt3 = np.zeros([10, m_bins])
@@ -414,9 +412,9 @@ for epoch in range(epoch_size):
 
 			# Compute the binned activations from each layer
 			# and keep a running total for each of the layers for this epoch
-			t1_hist_cur = np.histogram(t1[batch_index], m_bins, [-1.0, 1.0])[0]
-			t2_hist_cur = np.histogram(t2[batch_index], m_bins, [-1.0, 1.0])[0]
-			t3_hist_cur = np.histogram(t3[batch_index], m_bins, [-1.0, 1.0])[0]
+			t1_hist_cur = np.histogram(t1[batch_index], m_bins, [0.0, 10.0])[0]
+			t2_hist_cur = np.histogram(t2[batch_index], m_bins, [0.0, 10.0])[0]
+			t3_hist_cur = np.histogram(t3[batch_index], m_bins, [0.0, 10.0])[0]
 			t4_hist_cur = np.histogram(t4[batch_index], m_bins, [0.0, 1.0])[0]
 
 			t1_hist += t1_hist_cur
