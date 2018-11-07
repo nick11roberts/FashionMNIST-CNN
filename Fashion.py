@@ -208,7 +208,7 @@ and total iterations(n_ters)
 
 batch_size = 100
 n_iters = 18000
-m_bins = 30
+m_bins = 60
 epoch_size = n_iters/(len(train_dataset)/batch_size)
 epoch_size = int(math.ceil(epoch_size))
 
@@ -321,6 +321,8 @@ class CNNModel(nn.Module):
 
 def mutual_info(P):
 
+	#print(P)
+
 	# Normalize the counts
 	P /= np.sum(P)
 
@@ -412,9 +414,9 @@ for epoch in range(epoch_size):
 
 			# Compute the binned activations from each layer
 			# and keep a running total for each of the layers for this epoch
-			t1_hist_cur = np.histogram(t1[batch_index], m_bins, [0.0, 10.0])[0]
-			t2_hist_cur = np.histogram(t2[batch_index], m_bins, [0.0, 10.0])[0]
-			t3_hist_cur = np.histogram(t3[batch_index], m_bins, [0.0, 10.0])[0]
+			t1_hist_cur = np.histogram(t1[batch_index], m_bins, [0.0, 3.0])[0]
+			t2_hist_cur = np.histogram(t2[batch_index], m_bins, [0.0, 3.0])[0]
+			t3_hist_cur = np.histogram(t3[batch_index], m_bins, [0.0, 12.0])[0]
 			t4_hist_cur = np.histogram(t4[batch_index], m_bins, [0.0, 1.0])[0]
 
 			t1_hist += t1_hist_cur
@@ -475,15 +477,15 @@ for epoch in range(epoch_size):
 			iTY3.append(mutual_info(cont_mat_yt3))
 			iTY4.append(mutual_info(cont_mat_yt4))
 
-			t1_hist = np.zeros(m_bins)
-			t2_hist = np.zeros(m_bins)
-			t3_hist = np.zeros(m_bins)
-			t4_hist = np.zeros(m_bins)
+			#t1_hist = np.zeros(m_bins)
+			#t2_hist = np.zeros(m_bins)
+			#t3_hist = np.zeros(m_bins)
+			#t4_hist = np.zeros(m_bins)
 
-			cont_mat_yt1 = np.zeros([10, m_bins])
-			cont_mat_yt2 = np.zeros([10, m_bins])
-			cont_mat_yt3 = np.zeros([10, m_bins])
-			cont_mat_yt4 = np.zeros([10, m_bins])
+			#cont_mat_yt1 = np.zeros([10, m_bins])
+			#cont_mat_yt2 = np.zeros([10, m_bins])
+			#cont_mat_yt3 = np.zeros([10, m_bins])
+			#cont_mat_yt4 = np.zeros([10, m_bins])
 
 np.array(iXT1).tofile('iXT1.dat')
 np.array(iXT2).tofile('iXT2.dat')
