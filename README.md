@@ -16,6 +16,7 @@ Final Accuracy - 93.29%
 
 Notes on the information plane visualization:
     - Mutual information between the labels and the hidden layers were originally computed empirically, but [4], which uses a k nearest neighbors estimator, yielded slightly more reasonable mutual information estimates
+    - Code from [5], published by the authors of [3], was referenced for generating the plots
     - To visualize the information plane, follow the instructions below
 
 Visualizing the information plane
@@ -30,3 +31,4 @@ References
 [2] https://github.com/zalandoresearch/fashion-mnist
 [3] https://arxiv.org/abs/1703.00810
 [4] https://github.com/gregversteeg/NPEET
+[5] https://github.com/ravidziv/IDNNs
